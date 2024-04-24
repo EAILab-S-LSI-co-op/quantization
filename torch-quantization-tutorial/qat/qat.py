@@ -12,17 +12,19 @@ from src.util import *
 config = parse_arguments()
 
 model_name = config.m
+model_path = config.mp
+data_path = config.dp
 device = 'cpu'
     
 # Load pre-trained model
 model = eval(f"models.{model_name}()")
-model.load_state_dict(torch.load(f"./models/{model_name}.pth"))
+model.load_state_dict(torch.load(f"{model_path}/{model_name}.pth"))
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
 # Load data
-train_dataset = datasets.CIFAR10(root='/workspace/shared/data', train=True, transform=transforms.ToTensor(), download=True)
-test_dataset = datasets.CIFAR10(root='/workspace/shared/data', train=False, transform=transforms.ToTensor(), download=True)
+train_dataset = datasets.CIFAR10(root=data_path, train=True, transform=transforms.ToTensor(), download=True)
+test_dataset = datasets.CIFAR10(root=data_path, train=False, transform=transforms.ToTensor(), download=True)
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
@@ -60,32 +62,27 @@ for epoch in range(num_epochs):
             print(f"Epoch {epoch+1}, Batch {i+1}: Loss {running_loss / 100}")
             running_loss = 0.0
             
+            # model test
             model.eval()
             quantized_model = torch.quantization.convert(model, inplace=False)
-            # model test
-            correct = 0
-            for i, data in enumerate(test_loader):
-                inputs, labels = data
-                inputs, labels = inputs.to(device), labels.to(device)
-                
-                outputs = quantized_model(inputs)
-                _, predicted = torch.max(outputs, 1)
-                
-                correct += torch.sum(predicted == labels).item()
-            accuracy = correct / len(test_dataset)
-            print(f"Accuracy: {accuracy}")
+            acc = measure_accuracy(quantized_model, test_loader, device)
+            print(f"Accuracy: {acc}")
 
             # profile
             x = torch.randn(1, 3, 224, 224)
-            result, exec_time, mem_usage = profile(quantized_model, x)
+            result, exec_time = profile(quantized_model, x)
             print("Time taken (seconds):", exec_time)
-            print("Memory used (KB):", mem_usage)
-            
 
-# Prepare model for evaluation
-# model.eval()
-# torch.quantization.convert(model, inplace=True); 
+# model test
+model.eval()
+quantized_model = torch.quantization.convert(model, inplace=False)
+acc = measure_accuracy(quantized_model, test_loader, device)
+print(f"Accuracy: {acc}")
 
-
+# profile
+x = torch.randn(1, 3, 224, 224)
+result, exec_time = profile(quantized_model, x)
+print("Time taken (seconds):", exec_time)
+ 
 # Save quantized model
-# torch.save(model.state_dict(), "quantized_model.pth")
+torch.save(quantized_model.state_dict(), f"{model_path}/quantized_{model_name}.pth")
