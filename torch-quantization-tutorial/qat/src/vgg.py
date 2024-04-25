@@ -37,17 +37,11 @@ class _VGG(nn.Module):
         self.layers = _make_layers(cfg)
         flatten_features = 512
         self.fc1 = nn.Linear(flatten_features, 10)
-        # self.fc2 = nn.Linear(4096, 4096)
-        # self.fc3 = nn.Linear(4096, 10)
 
     def forward(self, x):
         x = self.layers(x)
-        # y = y.contiguous().view(y.size(0), -1)
-        x = x.flatten(1)
-        x = x.view(x.size(0), -1)
+        x = x.reshape(x.size(0), -1)
         x = self.fc1(x)
-        # y = self.fc2(y)
-        # y = self.fc3(y)
         return x
 
 
