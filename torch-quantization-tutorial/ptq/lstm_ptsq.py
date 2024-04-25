@@ -155,15 +155,27 @@ for epoch in pbar:
 
 
 def print_model_size(mdl):
-    torch.save(mdl.state_dict(), "tmp.pt")
-    print("%.2f MB" %(os.path.getsize("tmp.pt")/1e6))
-    os.remove('tmp.pt')
+    
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+        
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024**2
+    print('model size: {:.3f}MB'.format(size_all_mb))
 
 # now, predict.
 model.eval()
 Xtest_tensor = torch.from_numpy(Xtest).float().to(device)
 Ytest_pred = model(Xtest_tensor).cpu().detach().numpy()
-
+print(Ytest_pred)
+def get_size_of_model(model):
+    torch.save(model.state_dict(), "temp.p")
+    return os.path.getsize("temp.p")/1e6
+print("size of model before quantization: ", get_size_of_model(model))
 Ytest_pred = scaler.inverse_transform(Ytest_pred)
 Ytest = scaler.inverse_transform(Ytest)
 # mape
@@ -178,32 +190,28 @@ plt.savefig("./res_img/lstm_before_qt.png")
 print("MAPE: ",mape )
 
 
-print(print_model_size(model))
 
 
-# model.qconfig = torch.ao.quantization.get_default_qconfig('')
-
-# fused_model = torch.quantization.fuse_modules(model, [['lstm', 'activation']])
 # model.qconfig = torch.ao.quantization.default_qconfig
 
 model_32_prepared = torch.quantization.prepare(model)
 model_32_prepared.d_device = torch.device("cpu")
 
 input_fp32 = torch.from_numpy(Xtest).float()
-model_int8 = torch.quantization.convert(model_32_prepared,)
+model_int8 = torch.quantization.convert(model_32_prepared)
 
-print([p.dtype for p in model_int8.parameters()])
-# for miserable parameters, sending to cpu
+
 model_int8.to("cpu")
 model_int8.eval()
+print("size of model after quantization: ", get_size_of_model(model_int8))
 
 # eval
 Xtest_tensor = Xtest_tensor.to('cpu')
 # Xtest_tensor = torch.Tensor(Xtest_tensor)#.to('cpu')
 model_int8.d_device = torch.device("cpu")
 Ytest_pred_static_quantized = model_int8(Xtest_tensor)
-
 Ytest_pred_static_quantized = scaler.inverse_transform(Ytest_pred_static_quantized.detach().numpy())
+
 
 # mape
 mape_static_quantized = np.mean(np.abs((Ytest - Ytest_pred_static_quantized) / Ytest)) * 100
@@ -219,4 +227,4 @@ print(print_model_size(model_int8))
 
 # compare output type
 print("Output type comparison")
-print(Ytest_pred_static_quantized.dtype)
+print(Ytest_pred_static_quantized)
