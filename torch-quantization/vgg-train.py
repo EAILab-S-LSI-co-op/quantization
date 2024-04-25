@@ -7,7 +7,6 @@ import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.model import CNN
 from src.vgg import *
 from src.util import *
 from src.option import train_vgg_arguments
