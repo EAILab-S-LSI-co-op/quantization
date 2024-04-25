@@ -1,30 +1,32 @@
+import os
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 import torch.optim as optim
+import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from torchvision import models
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from src.util import *
+from src.model import CNN
 from src.vgg import *
-from src.option import quantize_vgg_arguments
+from src.util import *
+from src.option import train_vgg_arguments
 
-config = quantize_vgg_arguments()
+config = train_vgg_arguments()
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model_name = config.model_name
-data_path = config.data_path
 model_path = config.model_path
-device = 'cpu' # torch quantization does not support CUDA yet
-    
+data_path = config.data_path
+if not os.path.exists(model_path):
+    os.makedirs(model_path)
+
 # Load pre-trained model
 model = eval(f"{model_name}()").to(device)
-model.load_state_dict(torch.load(f"{model_path}/{model_name}.pth"))
 print(model)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
-
 
 # Load data
 train_dataset = datasets.CIFAR10(root=data_path, train=True, transform=transforms.ToTensor(), download=True)
@@ -32,22 +34,9 @@ test_dataset = datasets.CIFAR10(root=data_path, train=False, transform=transform
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-
-# Fuse modules
-# model.eval() # model must be set to eval for fusion to work
-# model = torch.quantization.fuse_modules(model, [['net.conv1', 'net.bn1', 'net.relu']])
-
-# Enable QAT
-model.train()
-model.qconfig = torch.quantization.get_default_qat_qconfig() # 'qnnpack'
-model = torch.quantization.QuantWrapper(model)
-torch.quantization.prepare_qat(model, inplace=True)
-
-model.to(device)
-
 # Train
-num_epochs = 1
-for epoch in range(num_epochs):
+num_epochs = 150
+for epoch in tqdm(range(num_epochs)):
     running_loss = 0.0
     for i, data in enumerate(train_loader):
         model.train()
@@ -65,18 +54,12 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         running_loss += loss.item()
+        
+    if epoch % 10 == 9:
+        accuracy = measure_accuracy(model, test_loader, device)
+        torch.save(model.state_dict(), f"{model_path}/{model_name}.pth")
+        print(f"Epoch: {epoch+1}, Accuracy: {accuracy}")
 
-# Prepare model for evaluation
-model.eval()
-quantized_model = torch.quantization.convert(model, inplace=False)
-
-# profile
-x = torch.randn(1, 3, 32, 32)
-result, exec_time, _ = profile(quantized_model, x)
-print(f"Time taken (seconds): {exec_time:.4f}")
-
-
-# Save quantized model
-accuracy = measure_accuracy(quantized_model, test_loader, device)
+accuracy = measure_accuracy(model, test_loader, device)
 print(f"Accuracy: {accuracy}")
-torch.save(quantized_model.state_dict(), f"{model_path}/quantized_{model_name}.pth")
+torch.save(model.state_dict(), f"{model_path}/{model_name}.pth")

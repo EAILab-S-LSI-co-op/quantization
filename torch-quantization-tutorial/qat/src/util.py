@@ -4,13 +4,19 @@ import torch
 
 def profile(func, *args, **kwargs):
     start_time = time.time()
+    start_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
     result = func(*args, **kwargs)
 
     end_time = time.time() 
-    exec_time = end_time - start_time
+    end_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 
-    return result, exec_time
+    exec_time = end_time - start_time
+    mem_usage = end_mem - start_mem
+
+    return result, exec_time, mem_usage
+
+
 
 def measure_accuracy(model, loader, device):
     model.eval()
