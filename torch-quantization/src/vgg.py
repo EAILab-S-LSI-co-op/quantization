@@ -40,7 +40,8 @@ class _VGG(nn.Module):
 
     def forward(self, x):
         x = self.layers(x)
-        x = x.reshape(x.size(0), -1)
+        x = x.flatten(1)
+        x = x.view(x.size(0), -1)
         x = self.fc1(x)
         return x
 
