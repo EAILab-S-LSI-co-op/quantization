@@ -172,7 +172,7 @@ criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 100
+num_epochs = 500
 pbar = tqdm(range(num_epochs))
 for epoch in pbar:
     # Convert the input data to torch tensors and move to GPU
@@ -226,6 +226,8 @@ mape = np.mean(np.abs((Ytest - Ytest_pred) / Ytest)) * 100
 plt.figure(figsize=(14, 7))
 plt.plot(Ytest, label='True temperature', color='blue')
 plt.plot(Ytest_pred, label='Predicted temperature', color='red')
+plt.text(-1, -1, "MAPE: {:.4f}".format(mape), fontsize=12)
+
 plt.title('Temperature prediction')
 plt.legend()
 plt.savefig("./res_img/lstm_before_qt.png")
@@ -264,11 +266,11 @@ plt.figure(figsize=(14, 7))
 plt.plot(Ytest, label='True temperature', color='blue')
 plt.plot(Ytest_pred_static_quantized, label='Static Quantized predicted temperature', color='red')
 plt.title('Temperature static quantized prediction')
+plt.text(-1, -1, "MAPE: {:.4f}".format(mape_static_quantized), fontsize=12)
 plt.legend()
 plt.savefig("./res_img/lstm_after_qt.png")
-print(mape_static_quantized)
 print(print_model_size(quantized_model))
 
 # compare output type
 print("Output type comparison")
-print(Ytest_pred_static_quantized)
+print(Ytest_pred_static_quantized.dtype)
