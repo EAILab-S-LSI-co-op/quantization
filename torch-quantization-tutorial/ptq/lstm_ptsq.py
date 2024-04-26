@@ -100,6 +100,11 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        print("input_size: ", input_size)
+        print("hidden_size: ", hidden_size)
+        print("num_layers: ", num_layers)
+        print("output_size: ", output_size)
+        exit()
         self.fc = nn.Linear(hidden_size, output_size)
         self.activation = nn.ReLU()
         self.d_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -107,7 +112,7 @@ class LSTMModel(nn.Module):
     def forward(self, x):
         h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.d_device)
         c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.d_device)
-        
+        breakpoint()
         out, _ = self.lstm(x, (h0, c0))
         last_state = out[:, -1, :]
         out = self.fc(last_state)
@@ -143,7 +148,6 @@ for epoch in pbar:
     # Convert the input data to torch tensors and move to GPU
     inputs = torch.from_numpy(Xtrain).float().to(device)
     targets = torch.from_numpy(Ytrain).float().to(device)
-
     # Forward pass
     outputs = model(inputs)
     loss = criterion(outputs, targets)

@@ -94,27 +94,62 @@ Xtest = np.reshape(Xtest, (Xtest.shape[0], Xtest.shape[1],1))
 
 
 
-class LSTMModel(nn.Module):
+class MyLSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
-        super(LSTMModel, self).__init__()
+        super(MyLSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=0.5)
         self.fc = nn.Linear(hidden_size, output_size)
         self.activation = nn.ReLU()
-        self.d_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.d_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def forward(self, x):
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.d_device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(self.d_device)
+    def forward(self, x, h_init=None, c_init=None):
+
         
-        out, _ = self.lstm(x, (h0, c0))
-        last_state = out[:, -1, :]
-        out = self.fc(last_state)
+        out, _ = self.lstm(x, (h_init, c_init))
+        # last_state = out[:, -1, :]
+        # out = self.fc(last_state)
         out = self.activation(out)
         
         return out
 
+class LSTMModel(nn.Module):
+    """Container module with an encoder, a recurrent module, and a decoder."""
+
+    def __init__(self, ntoken, ninp, nhid, nlayers, dropout=0.5):
+        super(LSTMModel, self).__init__()
+        self.drop = nn.Dropout(dropout)
+        # self.encoder = nn.Embedding(ntoken, ninp)
+        self.rnn = nn.LSTM(1, 32, 2, dropout=dropout,batch_first=True)
+        
+        self.decoder = nn.Linear(32,1)
+        self.d_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.init_weights()
+
+        self.nhid = nhid
+        self.nlayers = nlayers
+
+    def init_weights(self):
+        initrange = 0.1
+        # self.encoder.weight.data.uniform_(-initrange, initrange)
+        self.decoder.bias.data.zero_()
+        self.decoder.weight.data.uniform_(-initrange, initrange)
+
+    # def ori_forward(self, input, hidden):
+    #     emb = self.drop(self.encoder(input))
+    #     output, hidden = self.rnn(emb, hidden)
+    #     output = self.drop(output)
+    #     decoded = self.decoder(output)
+    #     return decoded, hidden
+
+    def forward(self, x, h_init=None, c_init=None):
+       
+        out, _ = self.rnn(x, (h_init, c_init))
+        last_state = out[:, -1, :]
+        out = self.decoder(last_state)
+        return out
+    
 # Define the hyperparameters
 input_size = 1
 hidden_size = 32
@@ -123,7 +158,8 @@ output_size = 1
 
 # Create an instance of the LSTM model
 model = LSTMModel(input_size, hidden_size, num_layers, output_size)
-
+h0 = torch.zeros(num_layers, input_size, hidden_size).to("cuda")
+c0 = torch.zeros(num_layers, input_size, hidden_size).to("cuda")
 # Print the model architecture
 print(model)
 
@@ -144,7 +180,9 @@ for epoch in pbar:
     targets = torch.from_numpy(Ytrain).float().to(device)
 
     # Forward pass
-    outputs = model(inputs)
+    h_init = torch.zeros(num_layers, inputs.size(0), hidden_size).to(device)
+    c_init = torch.zeros(num_layers, inputs.size(0), hidden_size).to(device)
+    outputs = model(inputs, h_init, c_init)
     loss = criterion(outputs, targets)
 
     # Backward and optimize
@@ -169,9 +207,13 @@ def print_model_size(mdl):
 
 # now, predict.
 model.eval()
+device = "cpu"
 Xtest_tensor = torch.from_numpy(Xtest).float().to(device)
-Ytest_pred = model(Xtest_tensor).cpu().detach().numpy()
-print(Ytest_pred)
+model.to(device)
+h_init = torch.zeros(num_layers, Xtest_tensor.size(0), hidden_size).to(device)
+c_init = torch.zeros(num_layers, Xtest_tensor.size(0), hidden_size).to(device)
+Ytest_pred = model(Xtest_tensor,h_init,c_init).cpu().detach().numpy()
+# print(Ytest_pred)
 def get_size_of_model(model):
     torch.save(model.state_dict(), "temp.p")
     return os.path.getsize("temp.p")/1e6
@@ -190,63 +232,28 @@ plt.savefig("./res_img/lstm_before_qt.png")
 print("MAPE: ",mape )
 
 
-class LSTMModel(nn.Module):
-    """Container module with an encoder, a recurrent module, and a decoder."""
+    
 
-    def __init__(self, ntoken, ninp, nhid, nlayers, dropout=0.5):
-        super(LSTMModel, self).__init__()
-        self.drop = nn.Dropout(dropout)
-        self.encoder = nn.Embedding(ntoken, ninp)
-        self.rnn = nn.LSTM(ninp, nhid, nlayers, dropout=dropout)
-        self.decoder = nn.Linear(nhid, ntoken)
-
-        self.init_weights()
-
-        self.nhid = nhid
-        self.nlayers = nlayers
-
-    def init_weights(self):
-        initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
-        self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
-
-    def forward(self, input, hidden):
-        emb = self.drop(self.encoder(input))
-        output, hidden = self.rnn(emb, hidden)
-        output = self.drop(output)
-        decoded = self.decoder(output)
-        return decoded, hidden
-
-    def init_hidden(self, bsz):
-        weight = next(self.parameters())
-        return (weight.new_zeros(self.nlayers, bsz, self.nhid),
-                weight.new_zeros(self.nlayers, bsz, self.nhid))
+    # def init_hidden(self, bsz):
+    #     weight = next(self.parameters())
+    #     return (weight.new_zeros(self.nlayers, bsz, self.nhid),
+    #             weight.new_zeros(self.nlayers, bsz, self.nhid))
 
 # test_model = LSTMModel(10, 10, 10, 10) # 이건 예시인데, 잘 되더라.
-
+# model = LSTMModel(1, 32, 2, 1)
 # model.qconfig = torch.ao.quantization.default_qconfig
 quantized_model = torch.quantization.quantize_dynamic(
     model, {nn.LSTM, nn.Linear}, dtype=torch.qint8
 )
-print(quantized_model)
-exit()
-model_32_prepared = torch.quantization.prepare(model)
-model_32_prepared.d_device = torch.device("cpu")
-
-input_fp32 = torch.from_numpy(Xtest).float()
-model_int8 = torch.quantization.convert(model_32_prepared)
-
-
-model_int8.to("cpu")
-model_int8.eval()
-print("size of model after quantization: ", get_size_of_model(model_int8))
+print("size of model after quantization: ", get_size_of_model(quantized_model))
 
 # eval
 Xtest_tensor = Xtest_tensor.to('cpu')
 # Xtest_tensor = torch.Tensor(Xtest_tensor)#.to('cpu')
-model_int8.d_device = torch.device("cpu")
-Ytest_pred_static_quantized = model_int8(Xtest_tensor)
+quantized_model.d_device = torch.device("cpu")
+h_init_qint = torch.zeros(num_layers, Xtest_tensor.size(0), hidden_size).to(device)
+c_init_qint = torch.zeros(num_layers, Xtest_tensor.size(0), hidden_size).to(device)
+Ytest_pred_static_quantized = quantized_model(Xtest_tensor,h_init_qint,c_init_qint)
 Ytest_pred_static_quantized = scaler.inverse_transform(Ytest_pred_static_quantized.detach().numpy())
 
 
@@ -260,7 +267,7 @@ plt.title('Temperature static quantized prediction')
 plt.legend()
 plt.savefig("./res_img/lstm_after_qt.png")
 print(mape_static_quantized)
-print(print_model_size(model_int8))
+print(print_model_size(quantized_model))
 
 # compare output type
 print("Output type comparison")
